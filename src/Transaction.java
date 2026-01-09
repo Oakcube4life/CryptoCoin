@@ -1,4 +1,8 @@
-public class Transaction {
+import java.io.Serializable;
+
+public class Transaction implements Serializable {
+    private static final long serialVersionUID = 1L;
+    
     public final String sender;
     public final String reciever;
     public final int amount;
