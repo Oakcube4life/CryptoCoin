@@ -6,7 +6,7 @@ public class Block implements Serializable {
     private static final long serialVersionUID = 1L;
 
     public final int index;
-    public final long timestamp;
+    public long timestamp; //TODO: this should be final
     public final ArrayList<Transaction> transactions;
 
     public int nonce;

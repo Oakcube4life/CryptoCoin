@@ -4,3 +4,8 @@
 # Compiled output
 bin/
 lib/
+
+# Intellij
+out/
+.idea/
+CryptoCoin.iml

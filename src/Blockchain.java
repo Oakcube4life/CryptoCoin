@@ -14,19 +14,43 @@ public class Blockchain implements Serializable {
 
     private Block createGenesisBlock () {
         Block genesis = new Block(0, "0");
+
+        genesis.timestamp = 0;
+        genesis.nonce = 0;
+
         genesis.addTransaction(new Transaction("SYSTEM", "Gavin", 10));
-        mineBlock(genesis);
+        genesis.hash = genesis.computeHash();
+
         return genesis;
     }
 
     public Block getLatestBlock () {
-        return chain.get(chain.size() - 1);
+        return chain.getLast();
     }
 
     public void addBlock (Block block) {
         block.hash = block.computeHash();
         mineBlock(block);
         chain.add(block);
+    }
+
+    public boolean containsBlock (String hash) {
+        for (Block block : chain) {
+            if (block.hash.equals(hash)) return true;
+        }
+
+        return false;
+    }
+
+    public synchronized boolean tryAddBlock (Block block) {
+        Block last = getLatestBlock();
+
+        if (!block.prevHash.equals(last.hash)) return false;
+        if (!block.computeHash().equals(block.hash)) return false;
+        if (!block.hash.startsWith("0".repeat(difficulty))) return false;
+
+        chain.add(block);
+        return true;
     }
 
     public int length () {
