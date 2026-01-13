@@ -1,5 +1,6 @@
 # VS Code settings
 .vscode/
+.DS_Store
 
 # Compiled output
 bin/
@@ -9,3 +10,7 @@ lib/
 out/
 .idea/
 CryptoCoin.iml
+
+# Individual Blockchains and Class files
+src/*.dat
+src/*.class

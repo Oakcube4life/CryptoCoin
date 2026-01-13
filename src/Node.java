@@ -16,7 +16,8 @@ public class Node {
 
     public Node (int port) {
         this.port = port;
-        this.blockchain = new Blockchain();
+        String filename = "blockchain_" + port + ".dat";
+        this.blockchain = Blockchain.loadFromDisk(filename);
     }
 
     //Startup, listens for a connection.
@@ -117,6 +118,7 @@ public class Node {
 
         //Request the other nodes chain, further explaination below.
         requestChainFromPeer(host, peerPort);
+        blockchain.saveToDisk("blockchain_" + port + ".dat");
     }
 
     //For all of the peers in our network we broadcast a given block for them to check and then possibly add to their chain.
@@ -156,6 +158,7 @@ public class Node {
             //This is the length check.
             if (blockchain.maybeReplaceChain(peerChain.getChain())) {
                 System.out.println("Chain reorganized");
+                blockchain.saveToDisk("blockchain_" + port + ".dat");
             }
 
         } catch (Exception e) {
@@ -165,6 +168,7 @@ public class Node {
 
     public void mineAndBroadcast (Block block) {
         blockchain.addBlock(block);
+        blockchain.saveToDisk("blockchain_" + port + ".dat");
         broadcastBlock(block);
     }
 

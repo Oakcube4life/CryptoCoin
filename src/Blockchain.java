@@ -3,6 +3,7 @@
  *
  * This is the blockchain data structure that each node stores a copy of. It is a list of blocks.
 */
+import java.io.*;
 import java.io.Serializable;
 import java.util.ArrayList;
 
@@ -33,6 +34,36 @@ public class Blockchain implements Serializable {
 
         return genesis;
     }
+
+    //Save/Load to and from disk
+    public synchronized void saveToDisk (String filename) {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(filename))) {
+            out.writeObject(this);
+            out.flush();
+
+            System.out.println("Saved Blockchain to Disk");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static Blockchain loadFromDisk(String filename) {
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(filename))) {
+            Blockchain chain = (Blockchain) in.readObject();
+            System.out.println("Blockchain loaded from disk");
+            return chain;
+        } catch (FileNotFoundException e) {
+            //File does not exist yet
+            System.out.println("No existing blockchain file, creating new chain");
+            return new Blockchain();
+        } catch (Exception e) {
+            //Corrupt file or incompatible version
+            System.out.println("Failed to load blockchain, creating new chain");
+            e.printStackTrace();
+            return new Blockchain();
+        }
+    }
+
 
     public Block getLatestBlock () {
         return chain.get(length() - 1); //getLast doesn't seem to work here?
