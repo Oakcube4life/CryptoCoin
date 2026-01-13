@@ -1,3 +1,8 @@
+/*
+ * Gavin MacFadyen
+ *
+ * Basic transaction storage here.
+ */
 import java.io.Serializable;
 
 public class Transaction implements Serializable {

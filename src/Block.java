@@ -1,3 +1,8 @@
+/*
+ * Gavin MacFadyen
+ *
+ * These are the individual blocks in the blockchain. Their data is hashed to become unique and "Matchable".
+*/
 import java.io.Serializable;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -6,7 +11,7 @@ public class Block implements Serializable {
     private static final long serialVersionUID = 1L;
 
     public final int index;
-    public long timestamp; //TODO: this should be final
+    public long timestamp;
     public final ArrayList<Transaction> transactions;
 
     public int nonce;

@@ -1,3 +1,8 @@
+/*
+ * Gavin MacFadyen
+ *
+ * This is the blockchain data structure that each node stores a copy of. It is a list of blocks.
+*/
 import java.io.Serializable;
 import java.util.ArrayList;
 
@@ -5,13 +10,18 @@ public class Blockchain implements Serializable {
     private static final long serialVersionUID = 1L;
     
     private final ArrayList<Block> chain;
-    private final int difficulty = 0; //Number of leading 0s
+    private final int difficulty = 4; //Number of leading 0s
 
     public Blockchain () {
         chain = new ArrayList<>();
         chain.add(createGenesisBlock());
     }
 
+    private String target () {
+        return "0".repeat(difficulty);
+    }
+
+    //This is the first block in a chain, it must be created uniquely.
     private Block createGenesisBlock () {
         Block genesis = new Block(0, "0");
 
@@ -25,13 +35,7 @@ public class Blockchain implements Serializable {
     }
 
     public Block getLatestBlock () {
-        return chain.getLast();
-    }
-
-    public void addBlock (Block block) {
-        block.hash = block.computeHash();
-        mineBlock(block);
-        chain.add(block);
+        return chain.get(length() - 1); //getLast doesn't seem to work here?
     }
 
     public boolean containsBlock (String hash) {
@@ -42,12 +46,19 @@ public class Blockchain implements Serializable {
         return false;
     }
 
+    //This is for adding the node locally.
+    public void addBlock (Block block) {
+        mineBlock(block);
+        chain.add(block);
+    }
+
+    //We can only add a block if its prevHash matches the current last blocks hash. Also if there are leading x zeros.
     public synchronized boolean tryAddBlock (Block block) {
         Block last = getLatestBlock();
 
         if (!block.prevHash.equals(last.hash)) return false;
         if (!block.computeHash().equals(block.hash)) return false;
-        if (!block.hash.startsWith("0".repeat(difficulty))) return false;
+        if (!block.hash.startsWith(target())) return false;
 
         chain.add(block);
         return true;
@@ -57,18 +68,45 @@ public class Blockchain implements Serializable {
         return chain.size();
     }
 
-    public void replaceChain (Blockchain newChain) {
-        this.chain.clear();
-        this.chain.addAll(newChain.chain);
-    }
-
+    //Mine the block by updating the nonce and recomputing the hash until it contains x leading zeros.
     private void mineBlock (Block block) {
-        String target = "0".repeat(difficulty);
-        while (!block.hash.startsWith(target)) {
+        while (!block.hash.startsWith(target())) {
             block.nonce++;
             block.hash = block.computeHash();
         }
         System.out.println("Mined Block " + block.index + " : " + block.hash);
+    }
+
+    //Checks if all blocks are valid in a chain.
+    public boolean isValidChain (ArrayList<Block> otherChain) {
+        if (otherChain.size() == 0) return false;
+
+        // Genesis blocks must match.
+        if (!otherChain.get(0).hash.equals(chain.get(0).hash)) return false;
+
+        for (int i = 1; i < otherChain.size(); i++) {
+            Block curr = otherChain.get(i);
+            Block prev = otherChain.get(i - 1);
+
+            if (!curr.prevHash.equals(prev.hash)) return false;
+            if (!curr.hash.equals(curr.computeHash())) return false;
+            if (!curr.hash.startsWith(target())) return false;
+        }
+        return true;
+    }
+
+    //This is our "Most up to date chain" check, it is based on whichever chain is longer.
+    public synchronized boolean maybeReplaceChain (ArrayList<Block> newChain) {
+        if (newChain.size() <= chain.size()) return false;
+        if (!isValidChain(newChain)) return false;
+
+        chain.clear();
+        chain.addAll(newChain);
+        return true;
+    }
+
+    public ArrayList<Block> getChain () {
+        return chain;
     }
 
     public void printChain () {
@@ -81,5 +119,5 @@ public class Blockchain implements Serializable {
                 System.out.println(" " + t);
             }
         }
-    } 
+    }
 }

@@ -1,3 +1,8 @@
+/*
+ * Gavin MacFadyen
+ *
+ * Messages have a type and data attched to them.
+ */
 import java.io.Serializable;
 
 public class Message implements Serializable {
