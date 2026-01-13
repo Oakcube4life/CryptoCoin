@@ -83,7 +83,7 @@ public class Blockchain implements Serializable {
         chain.add(block);
     }
 
-    //We can only add a block if its prevHash matches the current last blocks hash. Also if there are leading x zeros.
+    //We can only add a block if its prevHash matches the current last blocks hash. If there are leading x zeros.
     public synchronized boolean tryAddBlock (Block block) {
         Block last = getLatestBlock();
 

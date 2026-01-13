@@ -118,7 +118,6 @@ public class Node {
 
         //Request the other nodes chain, further explaination below.
         requestChainFromPeer(host, peerPort);
-        blockchain.saveToDisk("blockchain_" + port + ".dat");
     }
 
     //For all of the peers in our network we broadcast a given block for them to check and then possibly add to their chain.
