@@ -29,7 +29,6 @@ public class Main {
         System.out.println("Type 'help' for commands.");
 
         while (true) {
-            System.out.print("> ");
             String line = scanner.nextLine().trim();
             if (line.isEmpty()) continue;
 

@@ -162,7 +162,7 @@ public class Node {
                     String host = socket.getInetAddress().getHostAddress();
 
                     addPeer(host, peerPort);
-                    //System.out.println("Added peer " + host + ":" + peerPort);
+                    System.out.println("Added peer " + host + ":" + peerPort);
 
                     out.writeObject(new Message("ACK", null));
                     out.flush();
