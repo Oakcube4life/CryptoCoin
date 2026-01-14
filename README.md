@@ -3,8 +3,8 @@ This is my own **Blockchain** and **Cryptocurrency**.
 
 ## How to Run
 **For now**, compile all .java files and run main using these commands:
- - javac Block.java Blockchain.java GenesisUtil.java HashUtil.java Main.java Message.java Node.java Peer.java SerializationUtil.java Transaction.java TransactionInput.java TransactionOutput.java
- - java Main /<port/>
+ - `javac Block.java Blockchain.java GenesisUtil.java HashUtil.java Main.java Message.java Node.java Peer.java SerializationUtil.java Transaction.java TransactionInput.java TransactionOutput.java`
+ - `java Main <port>`
 
 ## How it works
 This project runs a simple peer-to-peer blockchain where each node maintains its own wallet, mines blocks, and exchanges transactions with peers. Each node runs independently on its own port and communicates with other nodes using a lightweight socket-based network.
@@ -54,4 +54,5 @@ To shut down a node cleanly, use:
 `exit`
 
 This notifies connected peers and terminates the process safely.
+
 Overall, the CLI allows you to run multiple nodes, connect them into a peer-to-peer network, mine blocks, send and receive transactions, inspect balances and UTXOs, observe forks and reorganizations, and restart nodes without losing state. This project is designed for learning and experimentation, and inspecting internal state through the CLI is encouraged.
