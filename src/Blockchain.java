@@ -4,7 +4,6 @@
  * This is the blockchain data structure that each node stores a copy of. It is a list of blocks.
 */
 import java.io.*;
-import java.io.Serializable;
 import java.util.ArrayList;
 
 public class Blockchain implements Serializable {
@@ -28,10 +27,9 @@ public class Blockchain implements Serializable {
 
         genesis.timestamp = 0;
         genesis.nonce = 0;
+        genesis.transactions.clear();
 
-        genesis.addTransaction(new Transaction("SYSTEM", "Gavin", 10));
         genesis.hash = genesis.computeHash();
-
         return genesis;
     }
 
@@ -40,8 +38,7 @@ public class Blockchain implements Serializable {
         try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(filename))) {
             out.writeObject(this);
             out.flush();
-
-            System.out.println("Saved Blockchain to Disk");
+            //System.out.println("Saved Blockchain to Disk"); Annoying print, saved for debugging.
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -50,20 +47,22 @@ public class Blockchain implements Serializable {
     public static Blockchain loadFromDisk(String filename) {
         try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(filename))) {
             Blockchain chain = (Blockchain) in.readObject();
-            System.out.println("Blockchain loaded from disk");
+            //System.out.println("Blockchain loaded from disk"); Annoying print, saved for debugging.
+
             return chain;
         } catch (FileNotFoundException e) {
             //File does not exist yet
             System.out.println("No existing blockchain file, creating new chain");
+
             return new Blockchain();
         } catch (Exception e) {
             //Corrupt file or incompatible version
             System.out.println("Failed to load blockchain, creating new chain");
             e.printStackTrace();
+            
             return new Blockchain();
         }
     }
-
 
     public Block getLatestBlock () {
         return chain.get(length() - 1); //getLast doesn't seem to work here?
@@ -83,20 +82,39 @@ public class Blockchain implements Serializable {
         chain.add(block);
     }
 
-    //We can only add a block if its prevHash matches the current last blocks hash. If there are leading x zeros.
-    public synchronized boolean tryAddBlock (Block block) {
+    public int length () {
+        return chain.size();
+    }
+
+    //We can only add a block if its prevHash matches the current last blocks hash. If there are leading x zeros. 
+    //I kept some debug print statements in here, they're useful when things break.
+    public synchronized boolean tryAddBlock(Block block) {
         Block last = getLatestBlock();
 
-        if (!block.prevHash.equals(last.hash)) return false;
-        if (!block.computeHash().equals(block.hash)) return false;
-        if (!block.hash.startsWith(target())) return false;
+        if (!block.prevHash.equals(last.hash)) {
+            System.out.println("[REJECT] prevHash mismatch");
+            return false;
+        }
+
+        if (block.timestamp < last.timestamp) {
+            System.out.println("[REJECT] timestamp invalid");
+            return false;
+        }
+
+        if (!block.computeHash().equals(block.hash)) {
+            System.out.println("[REJECT] hash mismatch");
+            System.out.println("[REJECT] computed = " + block.computeHash());
+            System.out.println("[REJECT] stored   = " + block.hash);
+            return false;
+        }
+
+        if (!block.hash.startsWith(target())) {
+            System.out.println("[REJECT] PoW invalid");
+            return false;
+        }
 
         chain.add(block);
         return true;
-    }
-
-    public int length () {
-        return chain.size();
     }
 
     //Mine the block by updating the nonce and recomputing the hash until it contains x leading zeros.
@@ -120,6 +138,7 @@ public class Blockchain implements Serializable {
             Block prev = otherChain.get(i - 1);
 
             if (!curr.prevHash.equals(prev.hash)) return false;
+            if (curr.timestamp < prev.timestamp) return false;
             if (!curr.hash.equals(curr.computeHash())) return false;
             if (!curr.hash.startsWith(target())) return false;
         }
@@ -140,15 +159,13 @@ public class Blockchain implements Serializable {
         return chain;
     }
 
-    public void printChain () {
+    public void printChain() {
         for (Block block : chain) {
-            System.out.println("---- BLOCK " + block.index + " ----");
-            System.out.println("Hash: " + block.hash);
-            System.out.println("Prev: " + block.prevHash);
-            System.out.println("Transactions: ");
-            for (Transaction t : block.transactions) {
-                System.out.println(" " + t);
-            }
+            System.out.println(
+                "Block " + block.index +
+                " | txs=" + block.transactions.size() +
+                " | hash=" + block.hash.substring(0, 10)
+            );
         }
     }
 }

@@ -9,69 +9,89 @@ import java.util.Scanner;
 public class Main {
 
     public static void main(String[] args) throws Exception {
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.println("=== Simple Blockchain Node ===");
-        System.out.print("Enter port to run node on: ");
-        int myPort = Integer.parseInt(scanner.nextLine());
-
-        Node node = new Node(myPort);
-        node.start();
-
-        System.out.print("Host new network or connect to peer? (host/connect): ");
-        String mode = scanner.nextLine().trim().toLowerCase();
-
-        if (mode.equals("connect")) {
-            System.out.print("Enter peer host (e.g. localhost): ");
-            String peerHost = scanner.nextLine();
-
-            System.out.print("Enter peer port: ");
-            int peerPort = Integer.parseInt(scanner.nextLine());
-
-            node.addPeer(peerHost, peerPort);
-
-            //Give peer time to be ready
-            Thread.sleep(1000);
-            node.syncWithPeer(peerHost, peerPort);
+        if (args.length != 1) {
+            System.out.println("Usage: java Main <port>");
+            return;
         }
 
-        //Command loop
+        int port = Integer.parseInt(args[0]);
+        Node node = new Node(port);
+        node.start();
+
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Node running on port " + port);
+        System.out.println("Type 'help' for commands.");
+        System.out.println("My public key: " + node.getPublicKeyBase64());
+
         while (true) {
-            System.out.println("\nCommands:");
-            System.out.println("  mine  - mine a new block");
-            System.out.println("  chain - print blockchain");
-            System.out.println("  exit  - quit");
+            System.out.print("");
+            String line = scanner.nextLine().trim();
+            String[] parts = line.split("\\s+");
 
-            String cmd = scanner.nextLine().trim().toLowerCase();
+            if (parts.length == 0) continue;
 
-            switch (cmd) {
-                case "mine":
-                    Block block = new Block(
-                        node.getBlockchain().length(),
-                        node.getBlockchain().getLatestBlock().hash
-                    );
-
-                    //Simple demo transaction
-                    block.addTransaction(
-                        new Transaction("Gavin", "Friend", 10)
-                    );
-
-                    node.mineAndBroadcast(block);
-                    System.out.println("Block mined and broadcasted");
+            switch (parts[0].toLowerCase()) {
+                case "help":
+                    printHelp();
                     break;
+                case "connect":
+                    if (parts.length != 3) {
+                        System.out.println("Usage: connect <host> <port>");
+                        break;
+                    }
 
+                    String host = parts[1];
+                    int peerPort = Integer.parseInt(parts[2]);
+
+                    node.syncWithPeer(host, peerPort);
+                    System.out.println("Connected to " + host + ":" + peerPort);
+                    break;
+                case "peers":
+                    node.printPeers();
+                    break;
                 case "chain":
                     node.getBlockchain().printChain();
                     break;
+                case "mempool":
+                    node.printMempool();
+                    break;
+                case "send":
+                    if (parts.length != 3) {
+                        System.out.println("Usage: send <receiverPublicKey> <amount>");
+                        break;
+                    }
 
+                    String receiver = parts[1];
+                    int amount = Integer.parseInt(parts[2]);
+
+                    Transaction tx = node.createTransaction(receiver, amount);
+                    node.addTransactionToMempool(tx);
+                    node.broadcastTransaction(tx);
+
+                    System.out.println("Transaction sent: " + tx.txId);
+                    break;
+                case "mine":
+                    node.mineFromMempool();
+                    break;
                 case "exit":
-                    System.out.println("Shutting down node...");
+                    node.disconnect();
                     System.exit(0);
-                    return;
-
                 default:
-                    System.out.println("Unknown command");
+                    System.out.println("Unknown command. Type 'help'.");
             }
         }
+    }
+
+    private static void printHelp() {
+        System.out.println("""
+            help                         Show commands
+            connect <ip> <port>          Connect to Peer
+            peers                        List connected peers
+            chain                        Print blockchain
+            mempool                      Show pending transactions
+            send <pubKey> <amount>       Create + broadcast transaction
+            mine                         Mine a block from mempool
+            exit                         Quit
+        """);
     }
 }

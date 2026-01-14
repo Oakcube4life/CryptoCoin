@@ -4,7 +4,6 @@
  * These are the individual blocks in the blockchain. Their data is hashed to become unique and "Matchable".
 */
 import java.io.Serializable;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 
 public class Block implements Serializable {
@@ -12,7 +11,7 @@ public class Block implements Serializable {
 
     public final int index;
     public long timestamp;
-    public final ArrayList<Transaction> transactions;
+    public ArrayList<Transaction> transactions;
 
     public int nonce;
     public final String prevHash;
@@ -31,20 +30,13 @@ public class Block implements Serializable {
         transactions.add(t);
     }
 
-    public String computeHash () {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            String data = index + prevHash + timestamp + transactions.toString() + nonce;
+    public String computeHash() {
+        StringBuilder txData = new StringBuilder();
 
-            byte[] hashBytes = digest.digest(data.getBytes("UTF-8"));
-            StringBuilder hex = new StringBuilder();
-
-            for (byte b : hashBytes) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        for (Transaction tx : transactions) {
+            txData.append(tx.txId);
         }
+
+        return HashUtil.sha256(index + prevHash + timestamp + txData + nonce);
     }
 }
