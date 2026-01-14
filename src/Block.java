@@ -26,10 +26,6 @@ public class Block implements Serializable {
         this.hash = computeHash();
     }
 
-    public void addTransaction(Transaction t) {
-        transactions.add(t);
-    }
-
     public String computeHash() {
         StringBuilder txData = new StringBuilder();
 

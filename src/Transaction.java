@@ -4,59 +4,60 @@
  * Basic transaction storage here. Most of this is GPT generated, I don't entirely understand the signing and verifying of transactions.
  */
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
+import java.util.List;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
 
 public class Transaction implements Serializable {
     private static final long serialVersionUID = 1L;
-    
-    public final String sender;
-    public final String reciever;
-    public final int amount;
+
+    public final PublicKey sender;
+    public final List<TransactionInput> inputs;
+    public final List<TransactionOutput> outputs;
+
     public final long timestamp;
-    public final String txId;
+    public String txId;
     public byte[] signature;
 
-    public Transaction (String sender, String reciever, int amount) {
+    public Transaction (PublicKey sender, List<TransactionInput> inputs, List<TransactionOutput> outputs) {
         this.sender = sender;
-        this.reciever = reciever;
-        this.amount = amount;
+        this.inputs = inputs;
+        this.outputs = outputs;
         this.timestamp = System.currentTimeMillis();
         this.txId = computeHash();
     }
 
-    private String computeHash () {
-        return HashUtil.sha256(sender + reciever + amount + timestamp);
+    public byte[] getDataToSign() {
+        return SerializationUtil.serialize(sender, inputs, outputs, timestamp);
     }
 
-    public void sign (PrivateKey privateKey) throws Exception {
+    private String computeHash () {
+        return HashUtil.sha256(getDataToSign());
+    }
+
+    public void sign(PrivateKey privateKey) throws Exception {
         Signature sig = Signature.getInstance("SHA256withRSA");
         sig.initSign(privateKey);
-        sig.update(txId.getBytes(StandardCharsets.UTF_8));
+        sig.update(getDataToSign());
         this.signature = sig.sign();
     }
 
-    public boolean verify () throws Exception {
-        if (sender.equals("COINBASE")) return true;
-
-        byte[] keyBytes = Base64.getDecoder().decode(sender);
-        PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(keyBytes));
+    public boolean verify() throws Exception {
+        if (inputs.isEmpty()) return true; //Coinbase
 
         Signature sig = Signature.getInstance("SHA256withRSA");
-        sig.initVerify(key);
-        sig.update(txId.getBytes(StandardCharsets.UTF_8));
+        sig.initVerify(sender);
+        sig.update(getDataToSign());
         return sig.verify(signature);
     }
 
+
     @Override
-    public String toString () {
-        return sender + " -> " + reciever + " : " + amount;
+    public String toString() {
+        return "Transaction " + txId + " (" + outputs.size() + " outputs)";
     }
+
 
     //These are useful to prevent duplicate transactions across gossip (GPT helped here lol)
     @Override

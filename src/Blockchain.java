@@ -1,10 +1,13 @@
 /*
  * Gavin MacFadyen
  *
- * This is the blockchain data structure that each node stores a copy of. It is a list of blocks.
+ * Enforces consensus rules, tracks blocks, and maintains the UTXO state.
+ * All validation happens here; no block or transaction can change state
+ * without passing through this class.
 */
 import java.io.*;
-import java.util.ArrayList;
+import java.security.PublicKey;
+import java.util.*;
 
 public class Blockchain implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -12,26 +15,52 @@ public class Blockchain implements Serializable {
     private final ArrayList<Block> chain;
     private final int difficulty = 4; //Number of leading 0s
 
+    private final Map<String, TransactionOutput> UTXO = new HashMap<>();
+
     public Blockchain () {
         chain = new ArrayList<>();
         chain.add(createGenesisBlock());
+        rebuildUTXO();
     }
 
     private String target () {
         return "0".repeat(difficulty);
     }
 
-    //This is the first block in a chain, it must be created uniquely.
-    private Block createGenesisBlock () {
+    //This is the first block in a chain, it must be created uniquely and deterministicly
+    //so all nodes have the same genesis in their chain.
+    private Block createGenesisBlock() {
         Block genesis = new Block(0, "0");
 
         genesis.timestamp = 0;
         genesis.nonce = 0;
         genesis.transactions.clear();
 
+        // Deterministic output ID
+        TransactionOutput out = new TransactionOutput(
+                "GENESIS_UTXO",
+                GenesisUtil.GENESIS_PUBLIC_KEY,
+                50
+        );
+
+        Transaction coinbase = new Transaction(
+                GenesisUtil.GENESIS_PUBLIC_KEY,
+                List.of(),
+                List.of(out)
+        );
+
+        // Deterministic signature
+        coinbase.signature = new byte[0];
+
+        // Deterministic txId
+        coinbase.txId = "GENESIS_TX";
+
+        genesis.transactions.add(coinbase);
+
         genesis.hash = genesis.computeHash();
         return genesis;
     }
+
 
     //Save/Load to and from disk
     public synchronized void saveToDisk (String filename) {
@@ -47,6 +76,7 @@ public class Blockchain implements Serializable {
     public static Blockchain loadFromDisk(String filename) {
         try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(filename))) {
             Blockchain chain = (Blockchain) in.readObject();
+            chain.rebuildUTXO();
             //System.out.println("Blockchain loaded from disk"); Annoying print, saved for debugging.
 
             return chain;
@@ -64,31 +94,10 @@ public class Blockchain implements Serializable {
         }
     }
 
-    public Block getLatestBlock () {
-        return chain.get(length() - 1); //getLast doesn't seem to work here?
-    }
-
-    public boolean containsBlock (String hash) {
-        for (Block block : chain) {
-            if (block.hash.equals(hash)) return true;
-        }
-
-        return false;
-    }
-
-    //This is for adding the node locally.
-    public void addBlock (Block block) {
-        mineBlock(block);
-        chain.add(block);
-    }
-
-    public int length () {
-        return chain.size();
-    }
-
-    //We can only add a block if its prevHash matches the current last blocks hash. If there are leading x zeros. 
-    //I kept some debug print statements in here, they're useful when things break.
-    public synchronized boolean tryAddBlock(Block block) {
+    //Checks whether a new block is valid and can be added to the chain.
+    //If anything is wrong (wrong parent, bad hash, invalid transactions),
+    //the block is rejected and the chain is left unchanged.
+    public synchronized boolean tryAddBlock(Block block) throws Exception {
         Block last = getLatestBlock();
 
         if (!block.prevHash.equals(last.hash)) {
@@ -113,7 +122,18 @@ public class Blockchain implements Serializable {
             return false;
         }
 
+        for (Transaction tx : block.transactions) {
+            if (!validateTransaction(tx)) {
+                System.out.println("[REJECT] invalid transaction");
+                return false;
+            }
+        }
+
         chain.add(block);
+        for (Transaction tx : block.transactions) {
+            applyTransaction(tx);
+        }
+
         return true;
     }
 
@@ -145,18 +165,118 @@ public class Blockchain implements Serializable {
         return true;
     }
 
-    //This is our "Most up to date chain" check, it is based on whichever chain is longer.
+    //Checks whether a transaction is allowed to happen according to the current blockchain state.
+    //For coinbase transactions, this only allows minting the fixed block reward.
+    //For normal transactions, this verifies the signature, checks that all referenced UTXOs exist,
+    //belong to the sender, and that the total input value is >= total output value.
+    //This prevents fake coins, double-spending, and unauthorized spending.
+    public boolean validateTransaction(Transaction tx) throws Exception {
+        //Coinbase transaction
+        if (tx.inputs.isEmpty()) {
+            return tx.outputs.size() == 1 && tx.outputs.get(0).amount == 50;
+        }
+
+        //Normal transaction
+        if (!tx.verify()) return false;
+
+        long inputSum = 0;
+
+        for (TransactionInput in : tx.inputs) {
+            TransactionOutput utxo = UTXO.get(in.outputId);
+            if (utxo == null) return false;
+            if (!utxo.recipient.equals(tx.sender)) return false;
+            inputSum += utxo.amount;
+        }
+
+        long outputSum = tx.outputs.stream().mapToLong(o -> o.amount).sum();
+
+        return inputSum >= outputSum;
+    }
+
+    //Applies a valid transaction to the blockchain state.
+    //All input UTXOs are removed (spent), and all output UTXOs are added (created).
+    //This is the only place where the UTXO set is mutated, and it is only called
+    //after a transaction has already been fully validated.
+    private void applyTransaction (Transaction tx) {
+        for (TransactionInput in : tx.inputs) {
+            UTXO.remove(in.outputId);
+        }
+
+        for (TransactionOutput out : tx.outputs) {
+            UTXO.put(out.id, out);
+        }
+    }
+
+    //Rebuilds the UTXO set from scratch so it matches the current chain exactly.
+    private void rebuildUTXO() {
+        UTXO.clear();
+
+        for (Block block : chain) {
+            for (Transaction tx : block.transactions) {
+                for (TransactionInput in : tx.inputs) {
+                    UTXO.remove(in.outputId);
+                }
+                for (TransactionOutput out : tx.outputs) {
+                    UTXO.put(out.id, out);
+                }
+            }
+        }
+    }
+
+    //This is our "Most up-to-date chain" check, it is based on whichever chain is longer.
     public synchronized boolean maybeReplaceChain (ArrayList<Block> newChain) {
         if (newChain.size() <= chain.size()) return false;
         if (!isValidChain(newChain)) return false;
 
         chain.clear();
         chain.addAll(newChain);
+        rebuildUTXO();
         return true;
     }
 
+    //These methods are basic "Getters" and are useful for the CLI.
     public ArrayList<Block> getChain () {
         return chain;
+    }
+
+    public Map<String, TransactionOutput> getUTXO () {
+        return Collections.unmodifiableMap(UTXO);
+    }
+
+    public long getBalance(PublicKey key) {
+        long balance = 0;
+
+        for (TransactionOutput out : UTXO.values()) {
+            if (out.recipient.equals(key)) {
+                balance += out.amount;
+            }
+        }
+
+        return balance;
+    }
+
+    public Block getLatestBlock () {
+        return chain.get(length() - 1); //getLast doesn't seem to work here?
+    }
+
+    public boolean containsBlock (String hash) {
+        for (Block block : chain) {
+            if (block.hash.equals(hash)) return true;
+        }
+
+        return false;
+    }
+
+    public int length () {
+        return chain.size();
+    }
+
+    public void printUTXO() {
+        System.out.println("UTXO set:");
+        for (TransactionOutput out : UTXO.values()) {
+            System.out.println(Base64.getEncoder().encodeToString(out.recipient.getEncoded()) + " -> " + out.amount
+            );
+        }
     }
 
     public void printChain() {

@@ -1,11 +1,10 @@
 /*
  * Gavin MacFadyen
  *
- * This class creates node objects that makeup the network. Nodes can send transactions given another nodes public key.
- * Blocks can be mined and broadcasted to determine the most up to date blockchain.
+ * This class creates node objects that makeup the network. A network participant that creates transactions,
+ * mines blocks, maintains a mempool, and stays synchronized with peers. All consensus rules are enforced by the Blockchain.
 */
-import java.util.ArrayList;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.io.*;
 import java.net.ConnectException;
@@ -17,7 +16,6 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.Base64;
 
 public class Node {
     private final int port;
@@ -29,6 +27,8 @@ public class Node {
 
     private final Set<Transaction> mempool = ConcurrentHashMap.newKeySet();
     private final Set<String> seenTransactions = ConcurrentHashMap.newKeySet();
+
+    private final Set<String> mempoolSpentUTXOs = ConcurrentHashMap.newKeySet();
 
     public Node (int port) throws Exception {
         this.port = port;
@@ -77,7 +77,6 @@ public class Node {
         }
     }
 
-
     //When a new peer joins, we add them to our peer list so we can broadcast to everyone in the network.
     public void addPeer (String host, int port) {
         for (Peer peer : peers) {
@@ -86,18 +85,66 @@ public class Node {
         peers.add(new Peer(host, port));
     }
 
-    //These methods are used to create and verify transactions locally.
-    public Transaction createTransaction (String reciever, int amount) throws Exception {
-        String senderKey = Base64.getEncoder().encodeToString(publicKey.getEncoded());
-        Transaction tx = new Transaction(senderKey, reciever, amount);
+    // Builds and signs a transaction using this node's available UTXOs, but does not commit it.
+    public Transaction createTransaction(PublicKey recipient, long amount) throws Exception {
+        long total = 0;
+        List<TransactionInput> inputs = new ArrayList<>();
+
+        //Collect UTXOs owned by this node
+        for (Map.Entry<String, TransactionOutput> entry : blockchain.getUTXO().entrySet()) {
+            TransactionOutput out = entry.getValue();
+
+            if (!out.recipient.equals(publicKey)) continue;
+
+            // Skip UTXOs already locked in mempool
+            if (mempoolSpentUTXOs.contains(out.id)) continue;
+
+            inputs.add(new TransactionInput(out.id));
+            total += out.amount;
+
+            if (total >= amount) break;
+        }
+
+        if (total < amount) {
+            throw new Exception("Insufficient funds");
+        }
+
+        //Create outputs
+        List<TransactionOutput> outputs = new ArrayList<>();
+
+        //Payment output
+        outputs.add(new TransactionOutput(recipient, amount));
+
+        //Change output (if any)
+        long change = total - amount;
+        if (change > 0) {
+            outputs.add(new TransactionOutput(publicKey, change));
+        }
+
+        //Create and sign transaction
+        Transaction tx = new Transaction(publicKey, inputs, outputs);
         tx.sign(privateKey);
+
         return tx;
     }
 
-    public void addTransactionToMempool (Transaction tx) throws Exception {
-        if (tx.verify() && !seenTransactions.contains(tx.txId)) {
-            seenTransactions.add(tx.txId);
-            mempool.add(tx);
+
+    public synchronized void addTransactionToMempool(Transaction tx) throws Exception {
+
+        if (!blockchain.validateTransaction(tx)) {
+            throw new Exception("Invalid transaction");
+        }
+
+        for (TransactionInput in : tx.inputs) {
+            if (mempoolSpentUTXOs.contains(in.outputId)) {
+                throw new Exception("Double-spend in mempool");
+            }
+        }
+
+        mempool.add(tx);
+
+        for (TransactionInput in : tx.inputs) {
+            mempoolSpentUTXOs.add(in.outputId);
         }
     }
 
@@ -127,33 +174,42 @@ public class Node {
                 case "NEW_BLOCK":
                     Block incoming = (Block) msg.data;
 
-                    //We already have this block in our chain, dont add and send acknowledgment.
+                    // Ignore blocks we already have
                     if (blockchain.containsBlock(incoming.hash)) {
                         out.writeObject(new Message("ACK", null));
                         out.flush();
-                        return;
+                        break;
                     }
 
-                    //Confirm that all of the transactions in the incoming block are verified.
-                    for (Transaction tx : incoming.transactions) {
-                        if (!tx.verify()) {
-                            System.out.println("Rejected block due to invalid transaction");
-                            out.writeObject(new Message("ACK", null));
-                            out.flush();
-                            return;
-                        }
+                    boolean added;
+                    try {
+                        // Full validation + UTXO application happens here
+                        added = blockchain.tryAddBlock(incoming);
+                    } catch (Exception e) {
+                        // Invalid block (bad tx, bad UTXO, etc.)
+                        out.writeObject(new Message("ACK", null));
+                        out.flush();
+                        break;
                     }
-
-                    //Add in the recieved block assuming it can be appending directly at the end of this nodes tip (incoming prevHash = currentTips hash, etc)
-                    //If we can't add it, we broadcast to the rest of the network letting them know this node is likely behind or on a fork. So we want to compare
-                    //Lengths with the other nodes to possibly replace our chain with a more up to date chain.
-                    boolean added = blockchain.tryAddBlock(incoming);
 
                     if (added) {
                         System.out.println("Accepted block: " + incoming.index);
+
+                        // Remove confirmed txs from mempool
                         mempool.removeAll(incoming.transactions);
+
+                        // Release mempool UTXO locks
+                        for (Transaction tx : incoming.transactions) {
+                            for (TransactionInput txIn : tx.inputs) {
+                                mempoolSpentUTXOs.remove(txIn.outputId);
+                            }
+                        }
+
+                        // Gossip block further
                         broadcastBlock(incoming);
+
                     } else {
+                        // Likely fork or we're behind → request chains
                         for (Peer p : peers) {
                             requestChainFromPeer(p.host, p.port);
                         }
@@ -165,23 +221,26 @@ public class Node {
                 case "NEW_TX":
                     Transaction tx = (Transaction) msg.data;
 
-                    if (!tx.verify()) {
-                        System.out.println("Rejected transaction (invalid signature)");
-                        break;
+                    try {
+                        //Ignore duplicates early
+                        if (seenTransactions.contains(tx.txId)) {
+                            break;
+                        }
+
+                        //Full validation and mempool locking
+                        addTransactionToMempool(tx);
+
+                        //Mark as seen *after* successful acceptance
+                        seenTransactions.add(tx.txId);
+
+                        //Gossip further
+                        broadcastTransaction(tx);
+
+                        System.out.println("Accepted transaction: " + tx.txId);
+
+                    } catch (Exception e) {
+                        // Invalid tx ignore silently bc annoying
                     }
-
-                    if (seenTransactions.contains(tx.txId)) {
-                        //Duplicate transaction, not necessary to print, only good for debugging.
-                        //System.out.println("Duplicate transaction ignored " + tx.txId);
-                        break;
-                    }
-
-                    //First time seeing this TX, add it to them mempool
-                    seenTransactions.add(tx.txId);
-                    mempool.add(tx);
-                    broadcastTransaction(tx);
-                    System.out.println("Accepted transaction: " + tx.txId);
-
 
                     out.writeObject(new Message("ACK", null));
                     out.flush();
@@ -240,40 +299,57 @@ public class Node {
             Message response = (Message) in.readObject();
             Blockchain peerChain = (Blockchain) response.data;
 
-            //This is the length check.
             if (blockchain.maybeReplaceChain(peerChain.getChain())) {
                 System.out.println("Chain reorganized");
-                blockchain.saveToDisk("blockchain_" + port + ".dat");
+
+                //Reset local transaction state.
+                mempool.clear();
+                mempoolSpentUTXOs.clear();
+                seenTransactions.clear();
+
+                //Persist new canonical chain.
+                blockchain.saveToDisk("blockchain_" + this.port + ".dat");
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void mineFromMempool () {
-        if (mempool.isEmpty()) return;
+    //Mines a new block using the current mempool contents. A coinbase transaction is always created to reward this node for mining,
+    //and any pending transactions in the mempool are included if present. The block is mined locally by performing proof-of-work, then validated
+    //and added to the blockchain. If accepted, the mempool and related locks are cleared and the new block is broadcast to peers.
+    public void mineFromMempool() throws Exception {
+        ArrayList<Transaction> txs = new ArrayList<>();
 
-        //Copy transactions from mempool
-        ArrayList<Transaction> txs = new ArrayList<>(mempool);
+        // Add coinbase tx always
+        TransactionOutput reward = new TransactionOutput(publicKey, 50);
+        Transaction coinbase = new Transaction(publicKey, List.of(), List.of(reward));
+        coinbase.signature = new byte[0];
+        txs.add(coinbase);
 
-        //Create new block shell
+        // Add mempool txs (if any)
+        txs.addAll(mempool);
+
         Block prev = blockchain.getLatestBlock();
         Block block = new Block(prev.index + 1, prev.hash);
         block.transactions = txs;
-
-        //Reset the hash because we changed the transactions list
         block.hash = block.computeHash();
 
-        //Mine and add it to the chain
-        blockchain.addBlock(block);
+        while (!block.hash.startsWith("0".repeat(4))) {
+            block.nonce++;
+            block.hash = block.computeHash();
+        }
+
+        if (!blockchain.tryAddBlock(block)) return;
+
         blockchain.saveToDisk("blockchain_" + port + ".dat");
 
-        //Remove mined transactions
-        mempool.removeAll(txs);
+        mempool.clear();
+        mempoolSpentUTXOs.clear();
+        seenTransactions.clear();
 
-        //Broadcast the block
         broadcastBlock(block);
-        System.out.println("Mined and broadcasted block " + block.index);
+        System.out.println("Mined block " + block.index);
     }
 
     //For all of the peers in our network we broadcast a given block for them to check and then possibly add to their chain.
@@ -326,20 +402,17 @@ public class Node {
         //System.out.println("Removed peer " + peer.host + ":" + peer.port); Annoying, save for debugging.
     }
 
-    //These methods below are mostly print statements for the CLI.
+    //These methods below are "Getters" and print statements for the CLI.
     public String getPublicKeyBase64 () {
         return Base64.getEncoder().encodeToString(publicKey.getEncoded());
     }
 
-    public void printMempool () {
-        if (mempool.isEmpty()) {
-            System.out.println("(empty)");
-            return;
-        }
+    public Blockchain getBlockchain () {
+        return blockchain;
+    }
 
-        for (Transaction tx : mempool) {
-            System.out.println(tx.txId + " | " + tx.amount);
-        }
+    public long getBalance() {
+        return blockchain.getBalance(publicKey);
     }
 
     public void printPeers () {
@@ -353,7 +426,17 @@ public class Node {
         }
     }
 
-    public Blockchain getBlockchain () {
-        return blockchain;
+    public void printMempool() {
+        if (mempool.isEmpty()) {
+            System.out.println("(mempool empty)");
+            return;
+        }
+        for (Transaction tx : mempool) {
+            System.out.println(tx.txId);
+        }
+    }
+
+    public void printUTXO() {
+        blockchain.printUTXO(); // expose from Blockchain
     }
 }
