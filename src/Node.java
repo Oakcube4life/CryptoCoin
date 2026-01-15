@@ -68,7 +68,7 @@ public class Node {
             try (
                 Socket socket = new Socket(peer.host, peer.port);
                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-                ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+                ObjectInputStream in = new ObjectInputStream(socket.getInputStream())
             ) {
                 out.writeObject(new Message("DISCONNECT", port));
                 out.flush();
@@ -152,7 +152,7 @@ public class Node {
     private void handleConnection (Socket socket) {
         try (
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-            ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+            ObjectInputStream in = new ObjectInputStream(socket.getInputStream())
         ) {
             Message msg = (Message) in.readObject();
 
@@ -174,7 +174,7 @@ public class Node {
                 case "NEW_BLOCK":
                     Block incoming = (Block) msg.data;
 
-                    // Ignore blocks we already have
+                    //Ignore blocks we already have
                     if (blockchain.containsBlock(incoming.hash)) {
                         out.writeObject(new Message("ACK", null));
                         out.flush();
@@ -183,10 +183,10 @@ public class Node {
 
                     boolean added;
                     try {
-                        // Full validation + UTXO application happens here
+                        //Full validation + UTXO application happens here
                         added = blockchain.tryAddBlock(incoming);
                     } catch (Exception e) {
-                        // Invalid block (bad tx, bad UTXO, etc.)
+                        //Invalid block (bad tx, bad UTXO, etc.)
                         out.writeObject(new Message("ACK", null));
                         out.flush();
                         break;
@@ -195,21 +195,21 @@ public class Node {
                     if (added) {
                         System.out.println("Accepted block: " + incoming.index);
 
-                        // Remove confirmed txs from mempool
+                        //Remove confirmed txs from mempool
                         mempool.removeAll(incoming.transactions);
 
-                        // Release mempool UTXO locks
+                        //Release mempool UTXO locks
                         for (Transaction tx : incoming.transactions) {
                             for (TransactionInput txIn : tx.inputs) {
                                 mempoolSpentUTXOs.remove(txIn.outputId);
                             }
                         }
 
-                        // Gossip block further
+                        //Gossip block further
                         broadcastBlock(incoming);
 
                     } else {
-                        // Likely fork or we're behind → request chains
+                        //Likely fork or we're behind → request chains
                         for (Peer p : peers) {
                             requestChainFromPeer(p.host, p.port);
                         }
@@ -239,7 +239,7 @@ public class Node {
                         System.out.println("Accepted transaction: " + tx.txId);
 
                     } catch (Exception e) {
-                        // Invalid tx ignore silently bc annoying
+                        //Invalid tx ignore silently bc annoying
                     }
 
                     out.writeObject(new Message("ACK", null));
@@ -254,11 +254,11 @@ public class Node {
                     break;
             }
         } catch (SocketException e) {
-            // Peer disconnected abruptly normal
+            //Peer disconnected abruptly normal
         } catch (EOFException e) {
-            // Peer closed connection cleanly normal
+            //Peer closed connection cleanly normal
         } catch (Exception e) {
-            // Actual unexpected error
+            //Actual unexpected error
             e.printStackTrace();
         }
     }
@@ -266,7 +266,7 @@ public class Node {
     public void syncWithPeer (String host, int peerPort) {
         addPeer(host, peerPort);
 
-        //HELLO handshake, this node will introduce itself to the other node so they can add eachother to their peer lists.
+        //HELLO handshake, this node will introduce itself to the other node so they can add each other to their peer lists.
         try (
             Socket socket = new Socket(host, peerPort);
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
@@ -280,11 +280,11 @@ public class Node {
             return;
         }
 
-        //Request the other nodes chain, further explaination below.
+        //Request the other nodes chain, further explanation below.
         requestChainFromPeer(host, peerPort);
     }
 
-    //REQUEST_CHAIN this broadcasts to a node that it wants its chain, when the other node recieves this message, it will
+    //REQUEST_CHAIN this broadcasts to a node that it wants its chain, when the other node receives this message, it will
     //return its own chain so we can compare. Then we may replace our own chain if it is shorter. This is a really simplistic
     //way of finding the most "Up to date" chain, but it works for my project.
     public void requestChainFromPeer (String host, int port) {
@@ -322,7 +322,7 @@ public class Node {
         ArrayList<Transaction> txs = new ArrayList<>();
 
         // Add coinbase tx always
-        TransactionOutput reward = new TransactionOutput(publicKey, 50);
+        TransactionOutput reward = new TransactionOutput(publicKey, 1);
         Transaction coinbase = new Transaction(publicKey, List.of(), List.of(reward));
         coinbase.signature = new byte[0];
         txs.add(coinbase);
@@ -352,7 +352,7 @@ public class Node {
         System.out.println("Mined block " + block.index);
     }
 
-    //For all of the peers in our network we broadcast a given block for them to check and then possibly add to their chain.
+    //For all the peers in our network we broadcast a given block for them to check and then possibly add to their chain.
     public void broadcastBlock (Block block) {
         for (Peer peer : new ArrayList<>(peers)) {
             try (

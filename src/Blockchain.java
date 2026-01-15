@@ -13,7 +13,7 @@ public class Blockchain implements Serializable {
     private static final long serialVersionUID = 1L;
     
     private final ArrayList<Block> chain;
-    private final int difficulty = 4; //Number of leading 0s
+    private final int difficulty = 5; //Number of leading 0s
 
     private final Map<String, TransactionOutput> UTXO = new HashMap<>();
 
@@ -40,7 +40,7 @@ public class Blockchain implements Serializable {
         TransactionOutput out = new TransactionOutput(
                 "GENESIS_UTXO",
                 GenesisUtil.GENESIS_PUBLIC_KEY,
-                50
+                0
         );
 
         Transaction coinbase = new Transaction(
@@ -173,7 +173,7 @@ public class Blockchain implements Serializable {
     public boolean validateTransaction(Transaction tx) throws Exception {
         //Coinbase transaction
         if (tx.inputs.isEmpty()) {
-            return tx.outputs.size() == 1 && tx.outputs.get(0).amount == 50;
+            return tx.outputs.size() == 1 && tx.outputs.get(0).amount == 1;
         }
 
         //Normal transaction
