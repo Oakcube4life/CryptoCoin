@@ -27,7 +27,7 @@ public class Blockchain implements Serializable {
         return "0".repeat(difficulty);
     }
 
-    //This is the first block in a chain, it must be created uniquely and deterministicly
+    //This is the first block in a chain, it must be created uniquely and deterministically
     //so all nodes have the same genesis in their chain.
     private Block createGenesisBlock() {
         Block genesis = new Block(0, "0");

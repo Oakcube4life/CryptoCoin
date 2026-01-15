@@ -335,7 +335,7 @@ public class Node {
         block.transactions = txs;
         block.hash = block.computeHash();
 
-        while (!block.hash.startsWith("0".repeat(4))) {
+        while (!block.hash.startsWith("0".repeat(5))) {
             block.nonce++;
             block.hash = block.computeHash();
         }
