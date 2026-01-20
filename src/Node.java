@@ -22,8 +22,8 @@ public class Node {
     private final Blockchain blockchain;
     private final ArrayList<Peer> peers = new ArrayList<>();
 
-    private final PrivateKey privateKey;
-    private final PublicKey publicKey;
+    private PrivateKey privateKey;
+    private PublicKey publicKey;
 
     private final Set<Transaction> mempool = ConcurrentHashMap.newKeySet();
     private final Set<String> seenTransactions = ConcurrentHashMap.newKeySet();
@@ -34,12 +34,7 @@ public class Node {
         this.port = port;
 
         //Create keys for transaction validations
-        KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
-        gen.initialize(2048);
-        KeyPair keyPair = gen.generateKeyPair();
-
-        this.privateKey = keyPair.getPrivate();
-        this.publicKey = keyPair.getPublic();
+        loadOrCreateKeys();
 
         String filename = "blockchain_" + port + ".dat";
         this.blockchain = Blockchain.loadFromDisk(filename);
@@ -49,6 +44,32 @@ public class Node {
     public void start () {
         new Thread(this::listen).start();
         System.out.println("Listening on port " + port + "...");
+    }
+
+    //On startup, we need persistent keys so no node ever overwrites its own key. This method
+    //creates a new key related to the nodes port if it does not exist and creates a .dat file
+    //to store it (keys_<port>.dat). If this file already exist, we load the key that already exists.
+    private void loadOrCreateKeys() throws Exception {
+        File keyFile = new File("keys_" + port + ".dat");
+
+        if (keyFile.exists()) {
+            try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(keyFile))) {
+                this.privateKey = (PrivateKey) in.readObject();
+                this.publicKey  = (PublicKey) in.readObject();
+            }
+        } else {
+            KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+            gen.initialize(2048);
+            KeyPair keyPair = gen.generateKeyPair();
+
+            this.privateKey = keyPair.getPrivate();
+            this.publicKey  = keyPair.getPublic();
+
+            try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(keyFile))) {
+                out.writeObject(privateKey);
+                out.writeObject(publicKey);
+            }
+        }
     }
 
     private void listen () {
