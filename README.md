@@ -1,10 +1,17 @@
 # CryptoCoin
 This is my own **Blockchain** and **Cryptocurrency**.
+![snapshot](src/resources/ChintSnapshot.png)
 
 ## How to Run
 **For now**, compile all .java files and run main using these commands:
  - `javac Block.java Blockchain.java GenesisUtil.java HashUtil.java Main.java Message.java Node.java Peer.java SerializationUtil.java Transaction.java TransactionInput.java TransactionOutput.java`
  - `java Main <port>`
+
+**OR** run it using the new client GUI by compiling all files using:
+ - `javac *.java`
+ - `java GUIMain.java`
+
+and select the port using the built-in peer-to-peer service by clicking *Connect*
 
 ## How it works
 This project runs a simple peer-to-peer blockchain where each node maintains its own wallet, mines blocks, and exchanges transactions with peers. Each node runs independently on its own port and communicates with other nodes using a lightweight socket-based network.
