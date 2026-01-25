@@ -1,8 +1,10 @@
 import javax.swing.*;
 import java.awt.*;
+import java.io.InputStream;
 import java.io.PrintStream;
 
 /**
+ * @author Brandon Kuciapski
  * Swing GUI wrapper for the blockchain node
  */
 public class GUIframe extends JFrame {
@@ -13,7 +15,7 @@ public class GUIframe extends JFrame {
     private Node node;
 
     public GUIframe() {
-        setTitle("Blockchain Node");
+        setTitle("Chintcoin GUI Blockchain Client");
         setSize(900, 600);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
@@ -28,25 +30,81 @@ public class GUIframe extends JFrame {
         setVisible(true);
     }
 
-    // ───────────────────────── TOP PANEL ─────────────────────────
-    private JPanel createTopPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+    private Font loadFont(String path, float size) {
+        try (InputStream is = getClass().getResourceAsStream(path)) {
+            if (is == null) {
+                System.err.println("Font not found: " + path);
+                return new Font("SansSerif", Font.PLAIN, (int) size);
+            }
 
-        panel.add(new JLabel("Port:"));
+            Font font = Font.createFont(Font.TRUETYPE_FONT, is);
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            ge.registerFont(font);
+
+            return font.deriveFont(size);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new Font("SansSerif", Font.PLAIN, (int) size);
+        }
+    }
+
+
+    // ───────────────────────── TOP PANEL ────────────────────────
+    private JPanel createTopPanel() {
+        JPanel container = new JPanel();
+        container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
+
+        // ── Title Bar ──
+        JPanel titleBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        titleBar.setBackground(new Color(20, 20, 20));
+        titleBar.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
+        // Optional logo
+//        JLabel logo = new JLabel();
+//        ImageIcon icon = loadLogo("logo.png");
+//        if (icon != null) {
+//            logo.setIcon(icon);
+//            titleBar.add(logo);
+//        }
+
+        JLabel title = new JLabel("CHINTCOIN client");
+        title.setForeground(Color.WHITE);
+        title.setFont(new Font("SansSerif", Font.BOLD, 20));
+        titleBar.add(title);
+
+        Font titleFont = loadFont("/fonts/ITCAvantGardeStd-Bk.ttf", 22f);
+        title.setFont(titleFont);
+
+
+        // ── Control Bar ──
+        JPanel controlBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        controlBar.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+
+        controlBar.add(new JLabel("Port:"));
         portField = new JTextField(6);
-        panel.add(portField);
+        controlBar.add(portField);
+        controlBar.setBackground(new Color(80, 80, 80));
+        controlBar.setForeground(Color.WHITE);
 
         JButton startButton = new JButton("Start Node");
         startButton.addActionListener(e -> startNode());
-        panel.add(startButton);
+        controlBar.add(startButton);
 
-        return panel;
+        container.add(titleBar);
+        container.add(controlBar);
+
+        return container;
     }
+
 
     // ───────────────────────── LEFT PANEL ─────────────────────────
     private JPanel createLeftPanel() {
         JPanel panel = new JPanel(new GridLayout(0, 1, 5, 5));
         panel.setPreferredSize(new Dimension(160, 0));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        panel.setBackground(new Color(30, 30, 30));
+
 
         panel.add(button("Help", this::help));
         panel.add(button("Connect", this::connect));
@@ -65,6 +123,12 @@ public class GUIframe extends JFrame {
     private JButton button(String text, Runnable action) {
         JButton b = new JButton(text);
         b.addActionListener(e -> action.run());
+
+        b.setFocusPainted(false);
+        b.setBackground(new Color(45, 45, 45));
+//        b.setForeground(Color.WHITE);
+        b.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
         return b;
     }
 
@@ -72,10 +136,21 @@ public class GUIframe extends JFrame {
     private JScrollPane createTerminalPanel() {
         terminal = new JTextArea();
         terminal.setEditable(false);
-        terminal.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        terminal.setLineWrap(true);
+        terminal.setWrapStyleWord(true);
+        terminal.setFont(new Font("JetBrains Mono", Font.PLAIN, 13));
 
-        return new JScrollPane(terminal);
+        terminal.setBackground(Color.BLACK);
+        terminal.setForeground(new Color(0x33FF33));
+
+        JScrollPane scroll = new JScrollPane(terminal);
+        scroll.setPreferredSize(new Dimension(0, 400));
+        scroll.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        scroll.setBackground(new Color(80, 80, 80));
+
+        return scroll;
     }
+
 
     private void redirectSystemOutput() {
         PrintStream ps = new PrintStream(new TextAreaOutputStream(terminal));

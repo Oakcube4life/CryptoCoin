@@ -2,6 +2,7 @@ import javax.swing.*;
 import java.io.OutputStream;
 
 /**
+ * @author Brandon Kuciapski
  * Redirects System.out / System.err into a JTextArea
  */
 public class TextAreaOutputStream extends OutputStream {
